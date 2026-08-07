@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Deception Intelligence Platform</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🛡️ Autonomous Deception Intelligence Platform</h1>
+            <div class="status-indicator">
+                <span class="dot"></span> ACTIVE DEFENSE
+            </div>
+        </header>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Total Honeytokens</h3>
+                <p id="total-tokens">0</p>
+            </div>
+            <div class="stat-card critical">
+                <h3>Critical Threats</h3>
+                <p id="critical-threats">0</p>
+            </div>
+            <div class="stat-card high">
+                <h3>High Threats</h3>
+                <p id="high-threats">0</p>
+            </div>
+            <div class="stat-card contained">
+                <h3>Contained</h3>
+                <p id="contained">0</p>
+            </div>
+        </div>
+
+        <div class="actions-panel">
+            <h2>Deploy Deception</h2>
+            <div class="action-buttons">
+                <button onclick="generateToken('api_key')">🔑 API Key</button>
+                <button onclick="generateToken('aws_credential')">☁️ AWS Creds</button>
+                <button onclick="generateToken('db_credential')">💾 DB Creds</button>
+                <button onclick="deployCanary()">📁 Canary File</button>
+                <button onclick="deployCreds()">🔐 Fake Passwords</button>
+                <button onclick="generateDoc('pdf')">📄 Fake PDF</button>
+                <button onclick="generateDoc('docx')">📝 Fake DOCX</button>
+                <button onclick="deploySourceCode()">💻 Fake Code</button>
+                <button onclick="deployCloud('aws')">☁️ Cloud Token</button>
+                <button onclick="simulateAttack()" class="danger">⚠️ Simulate Attack</button>
+            </div>
+        </div>
+
+        <div class="panels-grid">
+            <div class="panel">
+                <h2>🎯 Active Honeytokens</h2>
+                <div id="tokens-list" class="list"></div>
+            </div>
+
+            <div class="panel">
+                <h2>⚠️ Live Threats</h2>
+                <div id="threats-list" class="list"></div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>📊 Threat Visualization</h2>
+            <canvas id="threatChart"></canvas>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
