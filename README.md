@@ -1,2 +1,2 @@
-# GenZCoders-Autonomous-Deception-Platform
-A multi-agent AI cyber defense platform that uses intelligent honeytokens, telemetry collection, threat intelligence, and automated containment to proactively detect and mitigate cyber attacks.
+# GenZ-Coders-MIRAGE-Autonomous-Deception-Platform
+🚨 MIRAGE is an autonomous AI-powered cyber deception platform that deploys intelligent honeytokens, detects attacker activity in real time, performs multi-agent threat reasoning, and executes automated active defence before critical assets are compromised.
