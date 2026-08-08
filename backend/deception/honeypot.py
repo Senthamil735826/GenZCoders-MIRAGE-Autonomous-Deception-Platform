@@ -1,38 +1,278 @@
-import logging
-from datetime import datetime
+"""
+honeypot.py
+-----------
+MIRAGE Honeypot Deployment API.
 
-logger = logging.getLogger("mirage.deception")
+Provides endpoints to:
+    POST /deploy
+    GET  /active
 
-FAKE_RESPONSES = {
-    "/admin": {
-        "status": 200,
-        "body": {"page": "Admin Panel", "version": "2.1.0", "users": 142}
-    },
-    "/api/users": {
-        "status": 200,
-        "body": [
-            {"id": 1, "name": "admin", "role": "superuser"},
-            {"id": 2, "name": "john.doe", "role": "manager"}
-        ]
-    },
-    "/.env": {
-        "status": 200,
-        "body": "DB_HOST=10.0.0.5\nDB_PASS=fake_password_123\nSECRET=not_real"
-    },
-    "/wp-login.php": {
-        "status": 200,
-        "body": "<html><title>WordPress Login</title><form>Fake Login</form></html>"
+This module uses FastAPI and the MIRAGE backend package structure.
+"""
+
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+
+
+# ============================================================
+# Router
+# ============================================================
+
+router = APIRouter(
+    prefix="/honeypots",
+    tags=["Honeypots"],
+)
+
+
+# ============================================================
+# Request Models
+# ============================================================
+
+class HoneypotCreate(BaseModel):
+    """
+    Request body for creating a honeypot.
+    """
+
+    type: str = Field(
+        ...,
+        description="Honeypot type: SSH, HTTP, Database, IoT",
+    )
+
+    config: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Honeypot configuration",
+    )
+
+    isolated: bool = Field(
+        default=True,
+        description="Whether the honeypot should run in an isolated environment",
+    )
+
+    adaptive_deception: bool = Field(
+        default=True,
+        description="Enable adaptive deception",
+    )
+
+
+# ============================================================
+# Response Model
+# ============================================================
+
+class HoneypotResponse(BaseModel):
+    """
+    Response returned after honeypot deployment.
+    """
+
+    id: str
+    type: str
+    status: str
+    isolated: bool
+    adaptive_deception: bool
+    config: Dict[str, Any] = Field(
+        default_factory=dict
+    )
+
+
+# ============================================================
+# In-memory registry
+# ============================================================
+
+# Temporary registry for the prototype/demo.
+#
+# Later we can connect this directly to your SQLAlchemy
+# Honeypot model and database.
+
+_active_honeypots: Dict[str, HoneypotResponse] = {}
+
+
+# ============================================================
+# Utility
+# ============================================================
+
+def generate_honeypot_id() -> str:
+    """
+    Generate a unique honeypot identifier.
+    """
+
+    import uuid
+
+    return f"MIRAGE-{uuid.uuid4().hex[:12].upper()}"
+
+
+# ============================================================
+# Deploy Honeypot
+# ============================================================
+
+@router.post(
+    "/deploy",
+    response_model=HoneypotResponse,
+)
+async def deploy_honeypot(
+    honeypot: HoneypotCreate,
+):
+    """
+    Deploy a new deception asset.
+
+    Supported types:
+        SSH
+        HTTP
+        DATABASE
+        IOT
+    """
+
+    supported_types = {
+        "SSH",
+        "HTTP",
+        "DATABASE",
+        "IOT",
     }
-}
 
-def generate_decoy(path):
-    """Return fake data to mislead attacker."""
-    if path in FAKE_RESPONSES:
-        logger.info(f"[HONEYPOT] Serving decoy for: {path}")
-        return FAKE_RESPONSES[path]
+    honeypot_type = honeypot.type.upper()
 
-    # Default decoy
+    if honeypot_type not in supported_types:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unsupported honeypot type: "
+                f"{honeypot.type}. "
+                f"Supported types: "
+                f"{', '.join(sorted(supported_types))}"
+            ),
+        )
+
+    # --------------------------------------------------------
+    # Generate ID
+    # --------------------------------------------------------
+
+    honeypot_id = generate_honeypot_id()
+
+    # --------------------------------------------------------
+    # Create deployment
+    # --------------------------------------------------------
+
+    deployment = HoneypotResponse(
+        id=honeypot_id,
+        type=honeypot_type,
+        status="active",
+        isolated=honeypot.isolated,
+        adaptive_deception=honeypot.adaptive_deception,
+        config=honeypot.config,
+    )
+
+    # --------------------------------------------------------
+    # Store deployment
+    # --------------------------------------------------------
+
+    _active_honeypots[honeypot_id] = deployment
+
+    print(
+        f"🪤 Honeypot deployed: "
+        f"{honeypot_id} "
+        f"[{honeypot_type}]"
+    )
+
+    # --------------------------------------------------------
+    # Adaptive deception
+    # --------------------------------------------------------
+
+    if honeypot.adaptive_deception:
+
+        print(
+            f"🧠 Adaptive deception enabled: "
+            f"{honeypot_id}"
+        )
+
+    # --------------------------------------------------------
+    # Return
+    # --------------------------------------------------------
+
+    return deployment
+
+
+# ============================================================
+# List Active Honeypots
+# ============================================================
+
+@router.get(
+    "/active",
+    response_model=List[HoneypotResponse],
+)
+async def list_active_honeypots():
+    """
+    Return all active honeypots.
+    """
+
+    return [
+        honeypot
+        for honeypot in _active_honeypots.values()
+        if honeypot.status == "active"
+    ]
+
+
+# ============================================================
+# Get Honeypot
+# ============================================================
+
+@router.get(
+    "/{honeypot_id}",
+    response_model=HoneypotResponse,
+)
+async def get_honeypot(
+    honeypot_id: str,
+):
+    """
+    Get details of a specific honeypot.
+    """
+
+    honeypot = _active_honeypots.get(
+        honeypot_id
+    )
+
+    if honeypot is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Honeypot not found",
+        )
+
+    return honeypot
+
+
+# ============================================================
+# Stop Honeypot
+# ============================================================
+
+@router.delete(
+    "/{honeypot_id}",
+)
+async def stop_honeypot(
+    honeypot_id: str,
+):
+    """
+    Stop an active honeypot.
+    """
+
+    honeypot = _active_honeypots.get(
+        honeypot_id
+    )
+
+    if honeypot is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Honeypot not found",
+        )
+
+    updated = honeypot.model_copy(
+        update={
+            "status": "stopped"
+        }
+    )
+
+    _active_honeypots[honeypot_id] = updated
+
     return {
-        "status": 200,
-        "body": {"server": "Apache/2.4.41", "timestamp": datetime.utcnow().isoformat()}
+        "status": "success",
+        "message": "Honeypot stopped",
+        "honeypot_id": honeypot_id,
     }

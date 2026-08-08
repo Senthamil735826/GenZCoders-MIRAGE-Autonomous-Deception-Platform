@@ -1,13 +1,12 @@
 from datetime import datetime
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from docx import Document
 import os
 
 class DocumentDeception:
     
     @staticmethod
     def create_fake_pdf(filepath, title="Q4 Financial Report"):
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas
         c = canvas.Canvas(filepath, pagesize=letter)
         c.drawString(100, 750, title)
         c.drawString(100, 720, "CONFIDENTIAL - INTERNAL USE ONLY")
@@ -19,6 +18,7 @@ class DocumentDeception:
     
     @staticmethod
     def create_fake_docx(filepath, title="Strategic Plan 2025"):
+        from docx import Document
         doc = Document()
         doc.add_heading(title, 0)
         doc.add_paragraph("CONFIDENTIAL DOCUMENT")

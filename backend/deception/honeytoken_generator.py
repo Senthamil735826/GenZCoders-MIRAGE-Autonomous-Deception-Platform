@@ -1,11 +1,14 @@
 import secrets
 import hashlib
 import uuid
-from faker import Faker
-
-fake = Faker()
+import time
+import base64
 
 class HoneytokenGenerator:
+    @staticmethod
+    def _fake():
+        from faker import Faker
+        return Faker()
     
     @staticmethod
     def generate_api_key():
@@ -22,13 +25,15 @@ class HoneytokenGenerator:
     
     @staticmethod
     def generate_jwt_token():
-        header = base64_encode('{"alg":"HS256","typ":"JWT"}')
-        payload = base64_encode(f'{{"sub":"{fake.user_name()}","admin":true,"iat":{int(time.time())}}}')
+        fake = HoneytokenGenerator._fake()
+        header = base64.urlsafe_b64encode(b'{"alg":"HS256","typ":"JWT"}').decode().rstrip('=')
+        payload = base64.urlsafe_b64encode(f'{{"sub":"{fake.user_name()}","admin":true,"iat":{int(time.time())}}}'.encode()).decode().rstrip('=')
         signature = secrets.token_urlsafe(32)
         return f"{header}.{payload}.{signature}"
     
     @staticmethod
     def generate_database_credential():
+        fake = HoneytokenGenerator._fake()
         return {
             'host': fake.ipv4_private(),
             'port': 5432,
@@ -39,6 +44,7 @@ class HoneytokenGenerator:
     
     @staticmethod
     def generate_ssh_key():
+        fake = HoneytokenGenerator._fake()
         return {
             'username': fake.user_name(),
             'hostname': fake.hostname(),
@@ -60,5 +66,3 @@ class HoneytokenGenerator:
 def base64_encode(data):
     import base64
     return base64.urlsafe_b64encode(data.encode()).decode().rstrip('=')
-
-import time

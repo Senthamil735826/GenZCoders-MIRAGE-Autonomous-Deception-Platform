@@ -14,28 +14,22 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
-from google import genai
-
-from openai import AsyncOpenAI
-from dotenv import load_dotenv
-import os
 
 load_dotenv()
 
-client = AsyncOpenAI(
-    api_key=os.getenv("OPENAI_API_KEY")
-)
 
-load_dotenv()
-
-api_key = os.getenv("GEMINI_API_KEY")
-if not api_key:
-    raise RuntimeError("GEMINI_API_KEY not found in .env file")
-
-client = genai.Client(api_key=api_key)
+_UPPER_NUM = string.ascii_uppercase + string.digits
+_B64ISH = string.ascii_letters + string.digits + "+/"
 
 
 async def generate_fake_aws_key():
+    from google import genai
+    from openai import AsyncOpenAI
+    import os
+
+    load_dotenv()
+    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
     prompt = """
 Generate realistic-looking FAKE AWS credentials.
 
@@ -324,11 +318,6 @@ def fake_user():
         ).isoformat(),
     }
 
-import io
-from docx import Document
-from docx.shared import Inches
-from PIL import Image
-
 def fake_document(trigger_id: str, callback_url: str) -> dict:
     return {
         "filename": "Q3_Financials_Confidential.docx",
@@ -339,6 +328,10 @@ def fake_document(trigger_id: str, callback_url: str) -> dict:
 
 
 def generate_document_bytes(trigger_id: str, callback_url: str) -> bytes:
+    from docx import Document
+    from docx.shared import Inches
+    from PIL import Image
+
     doc = Document()
     doc.add_heading('Q3 Financial Projections & Mergers - CONFIDENTIAL', 0)
     doc.add_paragraph('This document contains proprietary financial data regarding the upcoming acquisition. Distribution is strictly limited to the executive team.')

@@ -19,7 +19,6 @@ from backend.database.session import get_db
 from backend.deception import tokens as tk
 from backend.deception import generators as g
 from backend.response.engine import evaluate_and_contain
-from backend.database.models import ContainmentAction
 
 # ── management API (protected) ────────────────────────────────────────────
 router = APIRouter(dependencies=[Depends(require_api_key)])
@@ -166,23 +165,6 @@ async def download_token_artifact(token_id: int, db: AsyncSession = Depends(get_
     )
 
 
-# --- NEW: Containment Actions Viewer ---
-@router.get("/containment/actions")
-async def list_containment_actions(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(ContainmentAction).order_by(desc(ContainmentAction.created_at))
-    )
-    actions = result.scalars().all()
-    return [{
-        "id": a.id,
-        "attacker_ip": a.attacker_ip,
-        "action_type": a.action_type,
-        "status": a.status,
-        "details": a.details,
-        "created_at": a.created_at
-    } for a in actions]
-
-
 # ── the callback: this is what attackers hit ──────────────────────────────
 
 _PIXEL = bytes.fromhex(
@@ -237,7 +219,7 @@ async def honeytoken_callback(
         await db.commit()
         await db.refresh(event) # Ensure event has an ID for containment
 
-                # --- AUTONOMOUS CONTAINMENT TRIGGER ---
+        # --- AUTONOMOUS CONTAINMENT TRIGGER ---
         try:
             await evaluate_and_contain(event, token, db)
         except Exception as exc:
