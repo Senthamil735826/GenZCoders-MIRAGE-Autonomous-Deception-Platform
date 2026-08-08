@@ -1,74 +1,114 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Deception Intelligence Platform</title>
-    <link rel="stylesheet" href="style.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MIRAGE — Autonomous Deception Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>🛡️ Autonomous Deception Intelligence Platform</h1>
-            <div class="status-indicator">
-                <span class="dot"></span> ACTIVE DEFENSE
-            </div>
-        </header>
 
-        <div class="stats-grid">
-            <div class="stat-card">
-                <h3>Total Honeytokens</h3>
-                <p id="total-tokens">0</p>
-            </div>
-            <div class="stat-card critical">
-                <h3>Critical Threats</h3>
-                <p id="critical-threats">0</p>
-            </div>
-            <div class="stat-card high">
-                <h3>High Threats</h3>
-                <p id="high-threats">0</p>
-            </div>
-            <div class="stat-card contained">
-                <h3>Contained</h3>
-                <p id="contained">0</p>
-            </div>
+<!-- ============ LOGIN SCREEN ============ -->
+<div id="login-screen">
+  <div class="login-visual">
+    <div id="world-map" class="world-map"></div>
+    <div class="visual-overlay">
+      <div class="wordmark">MIRA<span>GE</span></div>
+      <p class="tagline">Autonomous deception platform. Honeytokens, canaries, and decoys that watch back — tracking every touch, in real time, wherever it comes from.</p>
+      <div class="visual-stats">
+        <div><p class="mono">9</p><p>Deception vectors</p></div>
+        <div><p class="mono">24/7</p><p>Live telemetry</p></div>
+        <div><p class="mono">&lt;2s</p><p>Auto-containment</p></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="login-panel">
+    <div class="login-card">
+      <h1>Command center access</h1>
+      <p class="sub">Sign in to monitor or manage active deception campaigns.</p>
+
+      <div class="role-tabs">
+        <button class="role-tab active" id="tab-host" onclick="selectRole('host')">Host</button>
+        <button class="role-tab" id="tab-analyst" onclick="selectRole('analyst')">Analyst</button>
+      </div>
+
+      <form id="login-form" onsubmit="event.preventDefault(); enterDashboard();">
+        <div class="field">
+          <label for="login-user">Username</label>
+          <input id="login-user" type="text" placeholder="e.g. h.singh" autocomplete="username">
         </div>
-
-        <div class="actions-panel">
-            <h2>Deploy Deception</h2>
-            <div class="action-buttons">
-                <button onclick="generateToken('api_key')">🔑 API Key</button>
-                <button onclick="generateToken('aws_credential')">☁️ AWS Creds</button>
-                <button onclick="generateToken('db_credential')">💾 DB Creds</button>
-                <button onclick="deployCanary()">📁 Canary File</button>
-                <button onclick="deployCreds()">🔐 Fake Passwords</button>
-                <button onclick="generateDoc('pdf')">📄 Fake PDF</button>
-                <button onclick="generateDoc('docx')">📝 Fake DOCX</button>
-                <button onclick="deploySourceCode()">💻 Fake Code</button>
-                <button onclick="deployCloud('aws')">☁️ Cloud Token</button>
-                <button onclick="simulateAttack()" class="danger">⚠️ Simulate Attack</button>
-            </div>
+        <div class="field">
+          <label for="login-pass">Password</label>
+          <input id="login-pass" type="password" placeholder="••••••••" autocomplete="current-password">
         </div>
+        <button type="submit" class="btn btn-primary">Enter command center</button>
+      </form>
 
-        <div class="panels-grid">
-            <div class="panel">
-                <h2>🎯 Active Honeytokens</h2>
-                <div id="tokens-list" class="list"></div>
-            </div>
+      <div class="divider">or</div>
+      <button class="btn btn-google" onclick="enterDashboard()">
+        <svg width="16" height="16" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.1 29.5 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.9 18.9 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.1 29.5 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.3 0 10.1-2 13.7-5.3l-6.3-5.3C29.4 35.2 26.8 36 24 36c-5.3 0-9.7-3.3-11.3-8l-6.6 5.1C9.6 39.6 16.3 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.2 5.7l6.3 5.3C39.9 37.3 44 31.6 44 24c0-1.3-.1-2.7-.4-3.5z"/></svg>
+        Continue with Google
+      </button>
 
-            <div class="panel">
-                <h2>⚠️ Live Threats</h2>
-                <div id="threats-list" class="list"></div>
-            </div>
-        </div>
+      <p class="login-note">Demo mode — credentials aren't verified. Role tab selects which view you land on. Swap the Google button for Google Identity Services + a real client ID when you wire up production auth.</p>
+    </div>
+  </div>
+</div>
 
-        <div class="panel">
-            <h2>📊 Threat Visualization</h2>
-            <canvas id="threatChart"></canvas>
-        </div>
+<!-- ============ DASHBOARD ============ -->
+<div id="dashboard" class="hidden">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="brand">MIRA<span>GE</span></div>
+      <div class="threat-level"><span class="dot"></span> Threat level: elevated</div>
+    </div>
+    <div class="topbar-right">
+      <span class="clock" id="clock">--:--:--</span>
+      <span class="role-badge" id="role-badge">Host</span>
+      <button class="logout-btn" onclick="logout()">Log out</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="kpi-row">
+      <div class="kpi-card"><p class="label">Active honeytokens</p><p class="value cyan" id="kpi-tokens">142</p></div>
+      <div class="kpi-card"><p class="label">Threats detected today</p><p class="value amber" id="kpi-threats">37</p></div>
+      <div class="kpi-card"><p class="label">Auto-contained</p><p class="value green" id="kpi-contained">31</p></div>
+      <div class="kpi-card"><p class="label">Avg. containment time</p><p class="value" id="kpi-time">1.8s</p></div>
     </div>
 
-    <script src="app.js"></script>
+    <div class="grid-main">
+      <div class="panel">
+        <div class="panel-title">Threat severity <span class="sub">last 10 min · live</span></div>
+        <div style="position:relative; width:100%; height:220px;">
+          <canvas id="threatChart" role="img" aria-label="Live line chart of threat severity score over the last 10 minutes">Live threat severity feed.</canvas>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Automated containment <span class="sub">real-time</span></div>
+        <div class="containment-list scroll" id="containment-list"></div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:1rem;">
+      <div class="panel-title">Deception modules <span class="sub" id="modules-sub">host controls</span></div>
+      <div class="modules-grid" id="modules-grid"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Live telemetry feed <span class="sub">auto-refreshing</span></div>
+      <div class="feed-list scroll" id="feed-list"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<script src="script.js"></script>
 </body>
 </html>
