@@ -1,154 +1,322 @@
-:root{
-  --bg:#0a0e13; --bg-elev:#10161d; --bg-elev-2:#161d26; --bg-elev-3:#1c2530;
-  --border:#232b35; --border-soft:#1a212a;
-  --text:#e8edf2; --text-dim:#8b96a3; --text-faint:#576070;
-  --cyan:#2dd4c4; --cyan-dim:#123a34; --cyan-text:#7fe8dc;
-  --amber:#f0a63a; --amber-dim:#3a2a10; --amber-text:#f5c07a;
-  --red:#ef5350; --red-dim:#3a1414; --red-text:#f59492;
-  --green:#34c77b; --green-dim:#123322; --green-text:#7fe0ac;
-  --purple:#8b7ff0; --purple-dim:#241f45; --purple-text:#b8b0f7;
-  --radius:10px; --mono:'IBM Plex Mono',monospace; --sans:'Inter',sans-serif;
-}
-*{box-sizing:border-box; margin:0; padding:0;}
-html,body{background:var(--bg); color:var(--text); font-family:var(--sans); height:100%;}
-body{overflow-x:hidden;}
-::selection{background:var(--cyan-dim); color:var(--cyan-text);}
-button{font-family:inherit; cursor:pointer;}
-input{font-family:inherit;}
-a{color:inherit;}
-:focus-visible{outline:2px solid var(--cyan); outline-offset:2px;}
-.mono{font-family:var(--mono);}
-.hidden{display:none !important;}
+from flask import Flask, request, jsonify, send_from_directory
+from flask_socketio import SocketIO, emit
+from flask_cors import CORS
+from datetime import datetime
+import os
+import json
 
-/* ---------- LOGIN ---------- */
-#login-screen{min-height:100vh; display:grid; grid-template-columns:1.2fr 1fr;}
-@media (max-width:860px){ #login-screen{grid-template-columns:1fr;} .login-visual{min-height:320px;} }
+from database.models import db, Honeytoken, Interaction, ThreatEvent
+from deception.honeytoken_generator import HoneytokenGenerator
+from deception.credential_deception import CredentialDeception
+from deception.document_deception import DocumentDeception
+from deception.sourcecode_deception import SourceCodeDeception
+from deception.cloud_deception import CloudDeception
+from detection.monitor import InteractionMonitor
+from detection.telemetry import TelemetryCollector
+from response.containment import ContainmentEngine
 
-.login-visual{
-  position:relative; background:#080b0f;
-  border-right:1px solid var(--border); overflow:hidden;
-  display:flex; flex-direction:column; justify-content:center;
-}
-.login-visual::after{
-  content:''; position:absolute; inset:0; z-index:1; pointer-events:none;
-  background:linear-gradient(100deg, rgba(8,11,15,.96) 0%, rgba(8,11,15,.72) 40%, rgba(8,11,15,.25) 75%, rgba(8,11,15,.05) 100%);
-}
-.world-map{position:absolute; inset:0; z-index:0;}
-.world-map svg{display:block; width:100%; height:100%;}
-.country{fill:var(--bg-elev-3); stroke:var(--border-soft); stroke-width:.6;}
+app = Flask(__name__, static_folder='../frontend', static_url_path='')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///data/deception.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-.geo-marker circle.core{fill:var(--cyan);}
-.geo-marker.hq circle.core{fill:var(--amber);}
-.pulse-ring{fill:none; stroke:var(--cyan); stroke-width:1; transform-box:fill-box; transform-origin:center;}
-.geo-marker.hq .pulse-ring{stroke:var(--amber);}
-.track-arc{fill:none; stroke:var(--cyan); stroke-width:1; stroke-dasharray:3 4; opacity:.55;}
+CORS(app)
+db.init_app(app)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
-@media (prefers-reduced-motion: no-preference){
-  .pulse-ring{animation:geopulse 2.2s ease-out infinite;}
-  .geo-marker.p2 .pulse-ring{animation-delay:.5s;}
-  .geo-marker.p3 .pulse-ring{animation-delay:1s;}
-  .geo-marker.p4 .pulse-ring{animation-delay:1.5s;}
-  .track-arc{animation:dashmove 1s linear infinite;}
-  @keyframes geopulse{0%{transform:scale(1); opacity:.9;} 100%{transform:scale(5.5); opacity:0;}}
-  @keyframes dashmove{to{stroke-dashoffset:-14;}}
-}
+monitor = InteractionMonitor(db)
+containment = ContainmentEngine(db)
 
-.visual-overlay{position:relative; z-index:2; padding:3rem;}
-.wordmark{font-family:var(--mono); font-size:2.6rem; font-weight:600; letter-spacing:.02em; color:var(--text);}
-.wordmark span{color:var(--cyan);}
-.tagline{color:var(--text-dim); font-size:1rem; margin-top:.6rem; max-width:380px; line-height:1.6;}
-.visual-stats{display:flex; gap:2rem; margin-top:2.5rem;}
-.visual-stats div p:first-child{font-family:var(--mono); font-size:1.5rem; color:var(--cyan-text);}
-.visual-stats div p:last-child{font-size:.78rem; color:var(--text-faint); margin-top:2px; text-transform:uppercase; letter-spacing:.06em;}
+# ============ API ENDPOINTS ============
 
-.login-panel{display:flex; align-items:center; justify-content:center; padding:2rem;}
-.login-card{width:100%; max-width:380px;}
-.login-card h1{font-size:1.3rem; font-weight:600; margin-bottom:.3rem;}
-.login-card .sub{color:var(--text-dim); font-size:.88rem; margin-bottom:1.6rem;}
+@app.route('/')
+def index():
+    return send_from_directory('../frontend', 'index.html')
 
-.role-tabs{display:flex; background:var(--bg-elev); border:1px solid var(--border); border-radius:var(--radius); padding:3px; margin-bottom:1.4rem;}
-.role-tab{flex:1; text-align:center; padding:.55rem; border:none; background:transparent; color:var(--text-dim); font-size:.85rem; font-weight:500; border-radius:7px; transition:background .15s, color .15s;}
-.role-tab.active{background:var(--bg-elev-3); color:var(--cyan-text);}
+@app.route('/api/honeytokens', methods=['GET'])
+def list_honeytokens():
+    tokens = Honeytoken.query.all()
+    return jsonify([{
+        'id': t.id,
+        'token_type': t.token_type,
+        'location': t.location,
+        'status': t.status,
+        'created_at': t.created_at.isoformat(),
+        'triggered_at': t.triggered_at.isoformat() if t.triggered_at else None
+    } for t in tokens])
 
-.field{margin-bottom:1rem;}
-.field label{display:block; font-size:.78rem; color:var(--text-dim); margin-bottom:.4rem;}
-.field input{width:100%; background:var(--bg-elev); border:1px solid var(--border); border-radius:8px; padding:.7rem .8rem; color:var(--text); font-size:.9rem;}
-.field input:focus{border-color:var(--cyan);}
+@app.route('/api/honeytokens/generate', methods=['POST'])
+def generate_honeytoken():
+    data = request.json
+    token_type = data.get('type', 'api_key')
+    location = data.get('location', '/default/')
+    
+    generator = HoneytokenGenerator()
+    token_value = generator.generate_generic_token(token_type)
+    
+    if isinstance(token_value, dict):
+        token_value = json.dumps(token_value)
+    
+    token = Honeytoken(
+        token_type=token_type,
+        token_value=token_value,
+        location=location,
+        metadata=json.dumps(data.get('metadata', {}))
+    )
+    db.session.add(token)
+    db.session.commit()
+    
+    socketio.emit('honeytoken_created', {'id': token.id, 'type': token_type})
+    
+    return jsonify({
+        'id': token.id,
+        'type': token_type,
+        'value': token_value,
+        'location': location
+    }), 201
 
-.btn{border-radius:8px; padding:.75rem 1rem; font-size:.88rem; font-weight:600; border:1px solid transparent; width:100%; display:flex; align-items:center; justify-content:center; gap:.5rem;}
-.btn-primary{background:var(--cyan); color:#04211d; margin-top:.4rem;}
-.btn-primary:hover{background:#3fe4d2;}
-.btn-google{background:var(--bg-elev); border-color:var(--border); color:var(--text); margin-top:.7rem;}
-.btn-google:hover{border-color:var(--border-soft); background:var(--bg-elev-2);}
-.divider{display:flex; align-items:center; gap:.7rem; margin:1.1rem 0; color:var(--text-faint); font-size:.75rem;}
-.divider::before, .divider::after{content:''; flex:1; height:1px; background:var(--border);}
-.login-note{font-size:.74rem; color:var(--text-faint); margin-top:1.2rem; line-height:1.6;}
+@app.route('/api/honeytokens/canary', methods=['POST'])
+def deploy_canary():
+    data = request.json
+    target = data.get('target', 'C:\\Windows\\System32\\')
+    filename = data.get('filename', 'backup_credentials.txt')
+    
+    filepath = os.path.join(target, filename)
+    os.makedirs(target, exist_ok=True)
+    
+    with open(filepath, 'w') as f:
+        f.write(f"Username: admin\nPassword: P@ssw0rd2024\n")
+        f.write(f"API_KEY: AKIA{os.urandom(16).hex().upper()}\n")
+        f.write(f"Generated: {datetime.now()}\n")
+    
+    token = Honeytoken(
+        token_type='canary_file',
+        token_value=filepath,
+        location=filepath,
+        status='deployed'
+    )
+    db.session.add(token)
+    db.session.commit()
+    
+    return jsonify({'filepath': filepath, 'id': token.id}), 201
 
-/* ---------- DASHBOARD ---------- */
-#dashboard{min-height:100vh;}
-.topbar{display:flex; align-items:center; justify-content:space-between; padding:.9rem 1.5rem; border-bottom:1px solid var(--border); background:var(--bg-elev);}
-.topbar-left{display:flex; align-items:center; gap:.9rem;}
-.brand{font-family:var(--mono); font-weight:600; font-size:1.05rem;}
-.brand span{color:var(--cyan);}
-.threat-level{display:flex; align-items:center; gap:.4rem; font-size:.76rem; padding:.3rem .6rem; border-radius:20px; background:var(--amber-dim); color:var(--amber-text); border:1px solid #4a3616;}
-.threat-level .dot{width:6px; height:6px; border-radius:50%; background:var(--amber);}
-@media (prefers-reduced-motion: no-preference){ .threat-level .dot{animation:blink 1.6s ease-in-out infinite;} @keyframes blink{50%{opacity:.3;}} }
-.topbar-right{display:flex; align-items:center; gap:1rem;}
-.role-badge{font-size:.74rem; padding:.3rem .65rem; border-radius:20px; background:var(--bg-elev-3); color:var(--text-dim); border:1px solid var(--border);}
-.clock{font-family:var(--mono); font-size:.8rem; color:var(--text-dim);}
-.logout-btn{background:transparent; border:1px solid var(--border); color:var(--text-dim); font-size:.78rem; padding:.4rem .8rem; border-radius:7px;}
-.logout-btn:hover{color:var(--text); border-color:var(--border-soft);}
+@app.route('/api/credentials/deploy', methods=['POST'])
+def deploy_credential_deception():
+    data = request.json
+    target_dir = data.get('directory', './deployed_creds/')
+    os.makedirs(target_dir, exist_ok=True)
+    
+    cred = CredentialDeception()
+    files = []
+    files.append(cred.create_fake_password_file(os.path.join(target_dir, 'passwords.json')))
+    files.append(cred.create_fake_shadow_file(os.path.join(target_dir, 'shadow')))
+    files.append(cred.create_kerberos_ticket(os.path.join(target_dir, 'ticket.krb')))
+    
+    return jsonify({'deployed': files}), 201
 
-.main{padding:1.5rem; max-width:1400px; margin:0 auto;}
+@app.route('/api/documents/generate', methods=['POST'])
+def generate_documents():
+    data = request.json
+    doc_type = data.get('type', 'pdf')
+    target = data.get('target', './deployed_docs/')
+    os.makedirs(target, exist_ok=True)
+    
+    doc_gen = DocumentDeception()
+    filepath = ''
+    
+    if doc_type == 'pdf':
+        filepath = doc_gen.create_fake_pdf(os.path.join(target, 'financial_report.pdf'))
+    elif doc_type == 'docx':
+        filepath = doc_gen.create_fake_docx(os.path.join(target, 'strategic_plan.docx'))
+    else:
+        filepath = doc_gen.create_fake_spreadsheet(os.path.join(target, 'employee_data.csv'))
+    
+    token = Honeytoken(
+        token_type=f'document_{doc_type}',
+        token_value=filepath,
+        location=filepath
+    )
+    db.session.add(token)
+    db.session.commit()
+    
+    return jsonify({'filepath': filepath}), 201
 
-.kpi-row{display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; margin-bottom:1.5rem;}
-@media (max-width:760px){ .kpi-row{grid-template-columns:repeat(2,1fr);} }
-.kpi-card{background:var(--bg-elev); border:1px solid var(--border); border-radius:var(--radius); padding:1rem 1.1rem;}
-.kpi-card p.label{font-size:.74rem; color:var(--text-faint); text-transform:uppercase; letter-spacing:.05em;}
-.kpi-card p.value{font-family:var(--mono); font-size:1.7rem; margin-top:.3rem; color:var(--text);}
-.kpi-card p.value.cyan{color:var(--cyan-text);} .kpi-card p.value.green{color:var(--green-text);} .kpi-card p.value.amber{color:var(--amber-text);}
+@app.route('/api/cloud/deploy', methods=['POST'])
+def deploy_cloud_deception():
+    data = request.json
+    cloud_type = data.get('type', 'aws')
+    
+    cloud = CloudDeception()
+    if cloud_type == 'aws':
+        token_data = cloud.create_aws_session_token()
+    elif cloud_type == 'azure':
+        token_data = cloud.create_azure_sas_token()
+    else:
+        token_data = cloud.create_gcp_service_account()
+    
+    token = Honeytoken(
+        token_type=f'cloud_{cloud_type}',
+        token_value=json.dumps(token_data),
+        location='cloud_storage'
+    )
+    db.session.add(token)
+    db.session.commit()
+    
+    return jsonify(token_data), 201
 
-.panel{background:var(--bg-elev); border:1px solid var(--border); border-radius:var(--radius); padding:1.2rem;}
-.panel-title{font-size:.86rem; font-weight:600; color:var(--text); margin-bottom:.9rem; display:flex; align-items:center; justify-content:space-between;}
-.panel-title .sub{font-weight:400; color:var(--text-faint); font-size:.74rem;}
+@app.route('/api/sourcecode/deploy', methods=['POST'])
+def deploy_sourcecode_deception():
+    data = request.json
+    target = data.get('directory', './deployed_code/')
+    os.makedirs(target, exist_ok=True)
+    
+    sc = SourceCodeDeception()
+    files = []
+    files.append(sc.create_fake_env_file(target))
+    files.append(sc.create_fake_config(target))
+    files.append(sc.create_fake_credentials_file(target))
+    
+    return jsonify({'deployed': files}), 201
 
-.grid-main{display:grid; grid-template-columns:1.6fr 1fr; gap:1rem; margin-bottom:1rem;}
-@media (max-width:980px){ .grid-main{grid-template-columns:1fr;} }
+@app.route('/api/canary/trigger', methods=['POST'])
+def trigger_canary():
+    """Simulate an attacker touching a honeytoken"""
+    data = request.json
+    source_ip = data.get('source_ip', request.remote_addr)
+    action = data.get('action', 'file_access')
+    
+    telemetry_data = {
+        'source_ip': source_ip,
+        'method': data.get('method', 'GET'),
+        'path': data.get('path', '/admin/backup'),
+        'user_agent': data.get('user_agent', request.headers.get('User-Agent', '')),
+        'headers': dict(request.headers),
+        'payload': data.get('payload', '')
+    }
+    
+    risk = TelemetryCollector.calculate_risk_score(telemetry_data)
+    
+    interaction = monitor.log_interaction(
+        honeytoken_id=data.get('token_id', 1),
+        source_ip=source_ip,
+        action=action,
+        payload=telemetry_data,
+        risk_score=risk['score']
+    )
+    
+    threat_event = ThreatEvent(
+        event_type=action,
+        severity=risk['severity'],
+        description=f"Threat detected: {', '.join(risk['indicators'])}",
+        source_ip=source_ip
+    )
+    db.session.add(threat_event)
+    db.session.commit()
+    
+    if risk['score'] >= 40:
+        actions = containment.evaluate_threat(threat_event.to_dict() if hasattr(threat_event, 'to_dict') else {
+            'severity': risk['severity'],
+            'source_ip': source_ip
+        })
+        threat_event.contained = True
+        db.session.commit()
+    else:
+        actions = []
+    
+    socketio.emit('threat_detected', {
+        'interaction_id': interaction.id,
+        'source_ip': source_ip,
+        'risk_score': risk['score'],
+        'severity': risk['severity'],
+        'indicators': risk['indicators'],
+        'actions': actions
+    })
+    
+    return jsonify({
+        'risk_score': risk['score'],
+        'severity': risk['severity'],
+        'indicators': risk['indicators'],
+        'actions_taken': actions
+    }), 200
 
-.modules-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; margin-bottom:1rem;}
-@media (max-width:980px){ .modules-grid{grid-template-columns:repeat(2,1fr);} }
-@media (max-width:600px){ .modules-grid{grid-template-columns:1fr;} }
+@app.route('/api/threats', methods=['GET'])
+def get_threats():
+    threats = ThreatEvent.query.order_by(ThreatEvent.timestamp.desc()).limit(50).all()
+    return jsonify([{
+        'id': t.id,
+        'event_type': t.event_type,
+        'severity': t.severity,
+        'description': t.description,
+        'source_ip': t.source_ip,
+        'contained': t.contained,
+        'timestamp': t.timestamp.isoformat()
+    } for t in threats])
 
-.module-card{background:var(--bg-elev); border:1px solid var(--border); border-radius:var(--radius); padding:1rem; display:flex; flex-direction:column; gap:.6rem;}
-.module-head{display:flex; align-items:center; justify-content:space-between;}
-.module-icon{width:34px; height:34px; border-radius:8px; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
-.module-name{font-size:.86rem; font-weight:600; margin-top:.5rem;}
-.status-pill{font-size:.68rem; padding:.2rem .55rem; border-radius:20px; display:flex; align-items:center; gap:.35rem; font-weight:500;}
-.status-pill .d{width:5px; height:5px; border-radius:50%;}
-.status-active{background:var(--green-dim); color:var(--green-text);}
-.status-active .d{background:var(--green);}
-.status-idle{background:var(--bg-elev-3); color:var(--text-faint);}
-.status-idle .d{background:var(--text-faint);}
-.module-count{font-family:var(--mono); font-size:1.3rem;}
-.module-meta{font-size:.72rem; color:var(--text-faint);}
-.module-btn{margin-top:.3rem; background:var(--bg-elev-2); border:1px solid var(--border); color:var(--text); font-size:.76rem; padding:.5rem; border-radius:7px; text-align:center;}
-.module-btn:hover{border-color:var(--cyan); color:var(--cyan-text);}
-.module-btn:disabled{opacity:.4; cursor:not-allowed;}
-.view-only-tag{font-size:.68rem; color:var(--text-faint); text-align:center; padding:.45rem;}
+@app.route('/api/interactions', methods=['GET'])
+def get_interactions():
+    interactions = Interaction.query.order_by(Interaction.timestamp.desc()).limit(50).all()
+    return jsonify([{
+        'id': i.id,
+        'source_ip': i.source_ip,
+        'action': i.action,
+        'risk_score': i.risk_score,
+        'timestamp': i.timestamp.isoformat()
+    } for i in interactions])
 
-.feed-list{display:flex; flex-direction:column; gap:.55rem; max-height:340px; overflow-y:auto; padding-right:.3rem;}
-.feed-item{display:flex; gap:.6rem; font-size:.78rem; padding:.5rem .6rem; border-radius:7px; background:var(--bg-elev-2); border-left:2px solid var(--border);}
-.feed-item.sev-critical{border-left-color:var(--red);}
-.feed-item.sev-warn{border-left-color:var(--amber);}
-.feed-item.sev-info{border-left-color:var(--cyan);}
-.feed-time{font-family:var(--mono); color:var(--text-faint); font-size:.7rem; white-space:nowrap; padding-top:1px;}
-.feed-text{color:var(--text-dim); line-height:1.5;}
-.feed-text b{color:var(--text); font-weight:500;}
+@app.route('/api/stats', methods=['GET'])
+def get_stats():
+    stats = {
+        'total_tokens': Honeytoken.query.count(),
+        'active_tokens': Honeytoken.query.filter_by(status='active').count(),
+        'total_interactions': Interaction.query.count(),
+        'total_threats': ThreatEvent.query.count(),
+        'contained_threats': ThreatEvent.query.filter_by(contained=True).count(),
+        'critical_threats': ThreatEvent.query.filter_by(severity='critical').count(),
+        'high_threats': ThreatEvent.query.filter_by(severity='high').count(),
+        'medium_threats': ThreatEvent.query.filter_by(severity='medium').count(),
+        'low_threats': ThreatEvent.query.filter_by(severity='low').count()
+    }
+    return jsonify(stats)
 
-.containment-list{display:flex; flex-direction:column; gap:.5rem; max-height:200px; overflow-y:auto;}
-.containment-item{display:flex; align-items:center; gap:.6rem; font-size:.78rem; padding:.5rem .6rem; background:var(--green-dim); border-radius:7px; color:var(--green-text);}
-.containment-item .tick{width:16px; height:16px; border-radius:50%; background:var(--green); color:#052e18; font-size:.65rem; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-weight:700;}
-.containment-time{margin-left:auto; font-family:var(--mono); font-size:.68rem; color:var(--text-faint);}
+@app.route('/api/simulate-attack', methods=['POST'])
+def simulate_attack():
+    """Simulate various attack scenarios for testing"""
+    import random
+    scenarios = [
+        {'action': 'sql_injection', 'user_agent': 'sqlmap/1.5', 'payload': "' OR 1=1--"},
+        {'action': 'path_traversal', 'user_agent': 'Mozilla/5.0', 'path': '/../../../etc/passwd'},
+        {'action': 'brute_force', 'user_agent': 'hydra/9.0', 'path': '/admin/login'},
+        {'action': 'reconnaissance', 'user_agent': 'nmap/7.80', 'path': '/'},
+        {'action': 'credential_stuffing', 'user_agent': 'curl/7.68', 'path': '/api/login'}
+    ]
+    scenario = random.choice(scenarios)
+    scenario['source_ip'] = f"{random.randint(1,255)}.{random.randint(0,255)}.{random.randint(0,255)}.{random.randint(0,255)}"
+    
+    return trigger_canary()
 
-.scroll::-webkit-scrollbar{width:6px;}
-.scroll::-webkit-scrollbar-thumb{background:var(--border-soft); border-radius:3px;}
+# ============ SOCKET EVENTS ============
+
+@socketio.on('connect')
+def handle_connect():
+    emit('connected', {'message': 'Connected to deception platform'})
+
+# ============ STARTUP ============
+
+def init_db():
+    with app.app_context():
+        db.create_all()
+        os.makedirs('data', exist_ok=True)
+        os.makedirs('logs', exist_ok=True)
+        print("[+] Database initialized")
+        print("[+] Honeytokens armed")
+        print("[+] Telemetry online")
+        print("[+] Containment ready")
+
+if __name__ == '__main__':
+    init_db()
+    print("\n" + "="*50)
+    print("  AUTONOMOUS DECEPTION INTELLIGENCE PLATFORM")
+    print("="*50)
+    print("  Dashboard: http://localhost:5000")
+    print("  API:       http://localhost:5000/api/")
+    print("="*50 + "\n")
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
