@@ -1,0 +1,8 @@
+{
+  "name": "backend",
+  "main": "index.js",      // Should point to your entry file
+  "scripts": {
+    "start": "node index.js",
+    "build": "echo 'No build needed'" // or tsc if TypeScript
+  }
+}
