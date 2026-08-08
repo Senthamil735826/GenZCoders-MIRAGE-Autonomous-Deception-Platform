@@ -137,6 +137,7 @@
   .scroll::-webkit-scrollbar{width:6px;}
   .scroll::-webkit-scrollbar-thumb{background:var(--border-soft); border-radius:3px;}
 
+<<<<<<< HEAD
   /* ---------- LIVE WORLD MAP (threat-origin geolocation) ---------- */
   .geo-panel{grid-column:1 / -1; margin-bottom:1rem;}
   .world-map-wrap{
@@ -173,3 +174,68 @@
   .geo-legend span{display:inline-flex; align-items:center; gap:.4rem;}
   .geo-legend i{width:8px; height:8px; border-radius:50%; display:inline-block;}
   .geo-legend .c-critical{background:var(--red);} .geo-legend .c-warn{background:var(--amber);} .geo-legend .c-info{background:var(--cyan);}
+=======
+button:hover {
+    background: #00ff88;
+    color: #0a0e1a;
+    box-shadow: 0 0 10px #00ff88;
+}
+
+button.danger {
+    border-color: #ff3366;
+    color: #ff3366;
+}
+
+button.danger:hover {
+    background: #ff3366;
+    color: #0a0e1a;
+    box-shadow: 0 0 10px #ff3366;
+}
+
+.panels-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.panel {
+    background: #1a1f3a;
+    border: 1px solid #2a3f5a;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.panel h2 {
+    color: #00ff88;
+    margin-bottom: 15px;
+}
+
+.list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.list-item {
+    background: #0f1424;
+    border-left: 3px solid #00ff88;
+    padding: 10px;
+    margin-bottom: 8px;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.list-item.critical { border-left-color: #ff3366; }
+.list-item.high { border-left-color: #ff9933; }
+.list-item.medium { border-left-color: #ffcc00; }
+
+.list-item .timestamp {
+    color: #8a9ab0;
+    font-size: 0.8em;
+}
+
+.list-item .risk {
+    color: #ff3366;
+    font-weight: bold;
+}
+>>>>>>> 64298fec6fb91e777e509072a0ac21eac30fa1f4
