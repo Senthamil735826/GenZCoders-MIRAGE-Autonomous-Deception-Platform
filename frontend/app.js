@@ -1,240 +1,322 @@
-let currentRole = 'host';
+from flask import Flask, request, jsonify, send_from_directory
+from flask_socketio import SocketIO, emit
+from flask_cors import CORS
+from datetime import datetime
+import os
+import json
 
-function selectRole(role){
-  currentRole = role;
-  document.getElementById('tab-host').classList.toggle('active', role==='host');
-  document.getElementById('tab-analyst').classList.toggle('active', role==='analyst');
-}
+from database.models import db, Honeytoken, Interaction, ThreatEvent
+from deception.honeytoken_generator import HoneytokenGenerator
+from deception.credential_deception import CredentialDeception
+from deception.document_deception import DocumentDeception
+from deception.sourcecode_deception import SourceCodeDeception
+from deception.cloud_deception import CloudDeception
+from detection.monitor import InteractionMonitor
+from detection.telemetry import TelemetryCollector
+from response.containment import ContainmentEngine
 
-function enterDashboard(){
-  document.getElementById('login-screen').classList.add('hidden');
-  document.getElementById('dashboard').classList.remove('hidden');
-  document.getElementById('role-badge').textContent = currentRole === 'host' ? 'Host' : 'Analyst · view only';
-  document.getElementById('modules-sub').textContent = currentRole === 'host' ? 'host controls' : 'monitoring only';
-  renderModules();
-  startLiveFeed();
-}
+app = Flask(__name__, static_folder='../frontend', static_url_path='')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///data/deception.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-function logout(){
-  document.getElementById('dashboard').classList.add('hidden');
-  document.getElementById('login-screen').classList.remove('hidden');
-  document.getElementById('login-user').value = '';
-  document.getElementById('login-pass').value = '';
-}
+CORS(app)
+db.init_app(app)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
-// clock
-function tickClock(){
-  document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-GB');
-}
-setInterval(tickClock, 1000); tickClock();
+monitor = InteractionMonitor(db)
+containment = ContainmentEngine(db)
 
-// ---- world map: tracked origins pulsing + arcing toward HQ ----
-function renderWorldMap(){
-  const container = document.getElementById('world-map');
-  if (!container || typeof d3 === 'undefined') return;
-  const width = container.clientWidth || 700;
-  const height = container.clientHeight || 500;
+# ============ API ENDPOINTS ============
 
-  const svg = d3.select(container).append('svg')
-    .attr('viewBox', `0 0 ${width} ${height}`)
-    .attr('preserveAspectRatio', 'xMidYMid slice');
+@app.route('/')
+def index():
+    return send_from_directory('../frontend', 'index.html')
 
-  const projection = d3.geoNaturalEarth1()
-    .scale(width / 5.6)
-    .translate([width / 2, height / 2]);
-  const path = d3.geoPath(projection);
+@app.route('/api/honeytokens', methods=['GET'])
+def list_honeytokens():
+    tokens = Honeytoken.query.all()
+    return jsonify([{
+        'id': t.id,
+        'token_type': t.token_type,
+        'location': t.location,
+        'status': t.status,
+        'created_at': t.created_at.isoformat(),
+        'triggered_at': t.triggered_at.isoformat() if t.triggered_at else None
+    } for t in tokens])
 
-  d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(world => {
-    const countries = topojson.feature(world, world.objects.countries).features;
-    svg.selectAll('path.country')
-      .data(countries).join('path')
-      .attr('class', 'country')
-      .attr('d', path);
+@app.route('/api/honeytokens/generate', methods=['POST'])
+def generate_honeytoken():
+    data = request.json
+    token_type = data.get('type', 'api_key')
+    location = data.get('location', '/default/')
+    
+    generator = HoneytokenGenerator()
+    token_value = generator.generate_generic_token(token_type)
+    
+    if isinstance(token_value, dict):
+        token_value = json.dumps(token_value)
+    
+    token = Honeytoken(
+        token_type=token_type,
+        token_value=token_value,
+        location=location,
+        metadata=json.dumps(data.get('metadata', {}))
+    )
+    db.session.add(token)
+    db.session.commit()
+    
+    socketio.emit('honeytoken_created', {'id': token.id, 'type': token_type})
+    
+    return jsonify({
+        'id': token.id,
+        'type': token_type,
+        'value': token_value,
+        'location': location
+    }), 201
 
-    // headquarters + tracked threat origins (lon, lat)
-    const hq = { lon: 77.2, lat: 21.5 };
-    const origins = [
-      { lon: -73.9, lat: 40.7, cls: 'p1' },   // New York
-      { lon: 37.6,  lat: 55.7, cls: 'p2' },   // Moscow
-      { lon: 116.4, lat: 39.9, cls: 'p3' },   // Beijing
-      { lon: -0.1,  lat: 51.5, cls: 'p4' },   // London
-      { lon: 151.2, lat: -33.9, cls: 'p2' },  // Sydney
-    ];
+@app.route('/api/honeytokens/canary', methods=['POST'])
+def deploy_canary():
+    data = request.json
+    target = data.get('target', 'C:\\Windows\\System32\\')
+    filename = data.get('filename', 'backup_credentials.txt')
+    
+    filepath = os.path.join(target, filename)
+    os.makedirs(target, exist_ok=True)
+    
+    with open(filepath, 'w') as f:
+        f.write(f"Username: admin\nPassword: P@ssw0rd2024\n")
+        f.write(f"API_KEY: AKIA{os.urandom(16).hex().upper()}\n")
+        f.write(f"Generated: {datetime.now()}\n")
+    
+    token = Honeytoken(
+        token_type='canary_file',
+        token_value=filepath,
+        location=filepath,
+        status='deployed'
+    )
+    db.session.add(token)
+    db.session.commit()
+    
+    return jsonify({'filepath': filepath, 'id': token.id}), 201
 
-    const hqXY = projection([hq.lon, hq.lat]);
+@app.route('/api/credentials/deploy', methods=['POST'])
+def deploy_credential_deception():
+    data = request.json
+    target_dir = data.get('directory', './deployed_creds/')
+    os.makedirs(target_dir, exist_ok=True)
+    
+    cred = CredentialDeception()
+    files = []
+    files.append(cred.create_fake_password_file(os.path.join(target_dir, 'passwords.json')))
+    files.append(cred.create_fake_shadow_file(os.path.join(target_dir, 'shadow')))
+    files.append(cred.create_kerberos_ticket(os.path.join(target_dir, 'ticket.krb')))
+    
+    return jsonify({'deployed': files}), 201
 
-    origins.forEach(o => {
-      const xy = projection([o.lon, o.lat]);
-      const midX = (xy[0] + hqXY[0]) / 2;
-      const midY = Math.min(xy[1], hqXY[1]) - 50;
-      svg.append('path')
-        .attr('class', 'track-arc')
-        .attr('d', `M${xy[0]},${xy[1]} Q${midX},${midY} ${hqXY[0]},${hqXY[1]}`);
-    });
+@app.route('/api/documents/generate', methods=['POST'])
+def generate_documents():
+    data = request.json
+    doc_type = data.get('type', 'pdf')
+    target = data.get('target', './deployed_docs/')
+    os.makedirs(target, exist_ok=True)
+    
+    doc_gen = DocumentDeception()
+    filepath = ''
+    
+    if doc_type == 'pdf':
+        filepath = doc_gen.create_fake_pdf(os.path.join(target, 'financial_report.pdf'))
+    elif doc_type == 'docx':
+        filepath = doc_gen.create_fake_docx(os.path.join(target, 'strategic_plan.docx'))
+    else:
+        filepath = doc_gen.create_fake_spreadsheet(os.path.join(target, 'employee_data.csv'))
+    
+    token = Honeytoken(
+        token_type=f'document_{doc_type}',
+        token_value=filepath,
+        location=filepath
+    )
+    db.session.add(token)
+    db.session.commit()
+    
+    return jsonify({'filepath': filepath}), 201
 
-    origins.forEach(o => {
-      const xy = projection([o.lon, o.lat]);
-      const g = svg.append('g').attr('class', `geo-marker ${o.cls}`);
-      g.append('circle').attr('class', 'pulse-ring').attr('cx', xy[0]).attr('cy', xy[1]).attr('r', 3);
-      g.append('circle').attr('class', 'core').attr('cx', xy[0]).attr('cy', xy[1]).attr('r', 2.5);
-    });
+@app.route('/api/cloud/deploy', methods=['POST'])
+def deploy_cloud_deception():
+    data = request.json
+    cloud_type = data.get('type', 'aws')
+    
+    cloud = CloudDeception()
+    if cloud_type == 'aws':
+        token_data = cloud.create_aws_session_token()
+    elif cloud_type == 'azure':
+        token_data = cloud.create_azure_sas_token()
+    else:
+        token_data = cloud.create_gcp_service_account()
+    
+    token = Honeytoken(
+        token_type=f'cloud_{cloud_type}',
+        token_value=json.dumps(token_data),
+        location='cloud_storage'
+    )
+    db.session.add(token)
+    db.session.commit()
+    
+    return jsonify(token_data), 201
 
-    const hqG = svg.append('g').attr('class', 'geo-marker hq');
-    hqG.append('circle').attr('class', 'pulse-ring').attr('cx', hqXY[0]).attr('cy', hqXY[1]).attr('r', 4);
-    hqG.append('circle').attr('class', 'core').attr('cx', hqXY[0]).attr('cy', hqXY[1]).attr('r', 3.5);
-  }).catch(() => {
-    // offline fallback: no internet at venue — leave the dark panel as-is
-  });
-}
-renderWorldMap();
+@app.route('/api/sourcecode/deploy', methods=['POST'])
+def deploy_sourcecode_deception():
+    data = request.json
+    target = data.get('directory', './deployed_code/')
+    os.makedirs(target, exist_ok=True)
+    
+    sc = SourceCodeDeception()
+    files = []
+    files.append(sc.create_fake_env_file(target))
+    files.append(sc.create_fake_config(target))
+    files.append(sc.create_fake_credentials_file(target))
+    
+    return jsonify({'deployed': files}), 201
 
-// ---- module definitions ----
-const modules = [
-  {id:'honeytoken', name:'Honeytoken generation', action:'Generate honeytoken', color:'cyan', icon:'target', count:142, status:'active'},
-  {id:'canary', name:'Canary deployment', action:'Deploy canary', color:'amber', icon:'flag', count:28, status:'active'},
-  {id:'credential', name:'Credential deception', action:'Plant fake credentials', color:'purple', icon:'key', count:63, status:'active'},
-  {id:'document', name:'Fake document creation', action:'Create decoy document', color:'green', icon:'doc', count:19, status:'idle'},
-  {id:'cloud', name:'Cloud deception', action:'Deploy cloud decoy', color:'cyan', icon:'cloud', count:8, status:'active'},
-  {id:'sourcecode', name:'Source-code deception', action:'Inject code trap', color:'red', icon:'code', count:11, status:'idle'},
-];
-
-const icons = {
-  target: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="0.6" fill="currentColor"/></svg>',
-  flag: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 21V4"/><path d="M5 4h13l-3 4 3 4H5"/></svg>',
-  key: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="15" r="4"/><path d="M11 12l8-8"/><path d="M16 5l3 3"/><path d="M13 8l2.5 2.5"/></svg>',
-  doc: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/><path d="M9 13h7M9 17h7"/></svg>',
-  cloud: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 18a4 4 0 0 1-.5-7.97A5.5 5.5 0 0 1 17 9.5 4 4 0 0 1 17 18H7z"/></svg>',
-  code: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 8l-4 4 4 4"/><path d="M15 8l4 4-4 4"/></svg>',
-};
-
-function renderModules(){
-  const grid = document.getElementById('modules-grid');
-  grid.innerHTML = modules.map(m => `
-    <div class="module-card" id="mod-${m.id}">
-      <div class="module-head">
-        <div class="module-icon" style="background:var(--${m.color}-dim); color:var(--${m.color}-text);">${icons[m.icon]}</div>
-        <span class="status-pill ${m.status==='active'?'status-active':'status-idle'}" id="status-${m.id}"><span class="d"></span>${m.status==='active'?'Active':'Idle'}</span>
-      </div>
-      <div class="module-name">${m.name}</div>
-      <div class="module-count" id="count-${m.id}">${m.count}</div>
-      <div class="module-meta">deployed</div>
-      ${currentRole==='host'
-        ? `<button class="module-btn" onclick="triggerModule('${m.id}')">${m.action}</button>`
-        : `<div class="view-only-tag">View only</div>`}
-    </div>
-  `).join('');
-}
-
-function triggerModule(id){
-  const m = modules.find(x => x.id === id);
-  m.count += 1;
-  m.status = 'active';
-  document.getElementById(`count-${id}`).textContent = m.count;
-  const pill = document.getElementById(`status-${id}`);
-  pill.className = 'status-pill status-active';
-  pill.innerHTML = '<span class="d"></span>Active';
-  pushFeedItem(`<b>${m.name}</b> triggered manually — new decoy deployed`, 'info');
-}
-
-// ---- threat chart ----
-const chartData = Array.from({length:20}, () => Math.floor(Math.random()*30)+15);
-const chartLabels = Array.from({length:20}, (_,i) => `${20-i}m`);
-let threatChart;
-
-function initChart(){
-  const ctx = document.getElementById('threatChart');
-  threatChart = new Chart(ctx, {
-    type:'line',
-    data:{ labels: chartLabels, datasets:[{ data: chartData, borderColor:'#2dd4c4', backgroundColor:'rgba(45,212,196,0.08)', fill:true, tension:.35, pointRadius:0, borderWidth:2 }]},
-    options:{ responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{display:false} },
-      scales:{
-        x:{ ticks:{ color:'#576070', font:{size:10} }, grid:{ display:false } },
-        y:{ ticks:{ color:'#576070', font:{size:10} }, grid:{ color:'#1a212a' }, min:0, max:100 }
-      }
+@app.route('/api/canary/trigger', methods=['POST'])
+def trigger_canary():
+    """Simulate an attacker touching a honeytoken"""
+    data = request.json
+    source_ip = data.get('source_ip', request.remote_addr)
+    action = data.get('action', 'file_access')
+    
+    telemetry_data = {
+        'source_ip': source_ip,
+        'method': data.get('method', 'GET'),
+        'path': data.get('path', '/admin/backup'),
+        'user_agent': data.get('user_agent', request.headers.get('User-Agent', '')),
+        'headers': dict(request.headers),
+        'payload': data.get('payload', '')
     }
-  });
-}
-initChart();
+    
+    risk = TelemetryCollector.calculate_risk_score(telemetry_data)
+    
+    interaction = monitor.log_interaction(
+        honeytoken_id=data.get('token_id', 1),
+        source_ip=source_ip,
+        action=action,
+        payload=telemetry_data,
+        risk_score=risk['score']
+    )
+    
+    threat_event = ThreatEvent(
+        event_type=action,
+        severity=risk['severity'],
+        description=f"Threat detected: {', '.join(risk['indicators'])}",
+        source_ip=source_ip
+    )
+    db.session.add(threat_event)
+    db.session.commit()
+    
+    if risk['score'] >= 40:
+        actions = containment.evaluate_threat(threat_event.to_dict() if hasattr(threat_event, 'to_dict') else {
+            'severity': risk['severity'],
+            'source_ip': source_ip
+        })
+        threat_event.contained = True
+        db.session.commit()
+    else:
+        actions = []
+    
+    socketio.emit('threat_detected', {
+        'interaction_id': interaction.id,
+        'source_ip': source_ip,
+        'risk_score': risk['score'],
+        'severity': risk['severity'],
+        'indicators': risk['indicators'],
+        'actions': actions
+    })
+    
+    return jsonify({
+        'risk_score': risk['score'],
+        'severity': risk['severity'],
+        'indicators': risk['indicators'],
+        'actions_taken': actions
+    }), 200
 
-function pushChartPoint(){
-  const last = chartData[chartData.length-1];
-  let next = last + (Math.random()*20-10);
-  next = Math.max(5, Math.min(95, Math.round(next)));
-  chartData.push(next); chartData.shift();
-  threatChart.data.datasets[0].data = chartData;
-  threatChart.update('none');
-}
+@app.route('/api/threats', methods=['GET'])
+def get_threats():
+    threats = ThreatEvent.query.order_by(ThreatEvent.timestamp.desc()).limit(50).all()
+    return jsonify([{
+        'id': t.id,
+        'event_type': t.event_type,
+        'severity': t.severity,
+        'description': t.description,
+        'source_ip': t.source_ip,
+        'contained': t.contained,
+        'timestamp': t.timestamp.isoformat()
+    } for t in threats])
 
-// ---- telemetry feed ----
-const feedTemplates = [
-  {text:'Honeytoken <b>HT-3391</b> accessed from unrecognised host', sev:'critical'},
-  {text:'Canary <b>CN-002</b> triggered — possible lateral movement', sev:'critical'},
-  {text:'Credential decoy used in failed login attempt', sev:'warn'},
-  {text:'Decoy document <b>finance_Q3_report.xlsx</b> opened', sev:'warn'},
-  {text:'Cloud bucket <b>decoy-storage-07</b> listed by unfamiliar IAM role', sev:'warn'},
-  {text:'Source trap <b>getAdminToken()</b> invoked in staging repo', sev:'critical'},
-  {text:'New honeytoken beacon registered', sev:'info'},
-  {text:'Telemetry sync completed — 0 anomalies', sev:'info'},
-  {text:'Canary heartbeat received from edge node 4', sev:'info'},
-];
+@app.route('/api/interactions', methods=['GET'])
+def get_interactions():
+    interactions = Interaction.query.order_by(Interaction.timestamp.desc()).limit(50).all()
+    return jsonify([{
+        'id': i.id,
+        'source_ip': i.source_ip,
+        'action': i.action,
+        'risk_score': i.risk_score,
+        'timestamp': i.timestamp.isoformat()
+    } for i in interactions])
 
-const containmentTemplates = [
-  'Auto-blocked source IP',
-  'Isolated workstation from network',
-  'Revoked session token',
-  'Quarantined outbound transfer',
-  'Disabled compromised IAM role',
-  'Rotated exposed credential',
-];
-
-function nowTime(){ return new Date().toLocaleTimeString('en-GB'); }
-
-function pushFeedItem(text, sev){
-  const list = document.getElementById('feed-list');
-  const el = document.createElement('div');
-  el.className = `feed-item sev-${sev}`;
-  el.innerHTML = `<span class="feed-time">${nowTime()}</span><span class="feed-text">${text}</span>`;
-  list.prepend(el);
-  while (list.children.length > 30) list.removeChild(list.lastChild);
-}
-
-function pushContainmentItem(){
-  const list = document.getElementById('containment-list');
-  const action = containmentTemplates[Math.floor(Math.random()*containmentTemplates.length)];
-  const el = document.createElement('div');
-  el.className = 'containment-item';
-  el.innerHTML = `<span class="tick">✓</span><span>${action}</span><span class="containment-time">${nowTime()}</span>`;
-  list.prepend(el);
-  while (list.children.length > 12) list.removeChild(list.lastChild);
-  const kc = document.getElementById('kpi-contained');
-  kc.textContent = parseInt(kc.textContent) + 1;
-}
-
-let feedInterval, chartInterval;
-function startLiveFeed(){
-  clearInterval(feedInterval); clearInterval(chartInterval);
-  document.getElementById('feed-list').innerHTML = '';
-  document.getElementById('containment-list').innerHTML = '';
-  for (let i=0;i<5;i++){
-    const t = feedTemplates[Math.floor(Math.random()*feedTemplates.length)];
-    pushFeedItem(t.text, t.sev);
-  }
-  pushContainmentItem(); pushContainmentItem();
-
-  feedInterval = setInterval(() => {
-    const t = feedTemplates[Math.floor(Math.random()*feedTemplates.length)];
-    pushFeedItem(t.text, t.sev);
-    if (t.sev !== 'info'){
-      const kt = document.getElementById('kpi-threats');
-      kt.textContent = parseInt(kt.textContent) + 1;
-      if (Math.random() > 0.35) setTimeout(pushContainmentItem, 900 + Math.random()*1200);
+@app.route('/api/stats', methods=['GET'])
+def get_stats():
+    stats = {
+        'total_tokens': Honeytoken.query.count(),
+        'active_tokens': Honeytoken.query.filter_by(status='active').count(),
+        'total_interactions': Interaction.query.count(),
+        'total_threats': ThreatEvent.query.count(),
+        'contained_threats': ThreatEvent.query.filter_by(contained=True).count(),
+        'critical_threats': ThreatEvent.query.filter_by(severity='critical').count(),
+        'high_threats': ThreatEvent.query.filter_by(severity='high').count(),
+        'medium_threats': ThreatEvent.query.filter_by(severity='medium').count(),
+        'low_threats': ThreatEvent.query.filter_by(severity='low').count()
     }
-    if (Math.random() > 0.6){
-      const kk = document.getElementById('kpi-tokens');
-      kk.textContent = parseInt(kk.textContent) + (Math.random() > 0.5 ? 1 : 0);
-    }
-  }, 3200);
+    return jsonify(stats)
 
-  chartInterval = setInterval(pushChartPoint, 2200);
-}
+@app.route('/api/simulate-attack', methods=['POST'])
+def simulate_attack():
+    """Simulate various attack scenarios for testing"""
+    import random
+    scenarios = [
+        {'action': 'sql_injection', 'user_agent': 'sqlmap/1.5', 'payload': "' OR 1=1--"},
+        {'action': 'path_traversal', 'user_agent': 'Mozilla/5.0', 'path': '/../../../etc/passwd'},
+        {'action': 'brute_force', 'user_agent': 'hydra/9.0', 'path': '/admin/login'},
+        {'action': 'reconnaissance', 'user_agent': 'nmap/7.80', 'path': '/'},
+        {'action': 'credential_stuffing', 'user_agent': 'curl/7.68', 'path': '/api/login'}
+    ]
+    scenario = random.choice(scenarios)
+    scenario['source_ip'] = f"{random.randint(1,255)}.{random.randint(0,255)}.{random.randint(0,255)}.{random.randint(0,255)}"
+    
+    return trigger_canary()
+
+# ============ SOCKET EVENTS ============
+
+@socketio.on('connect')
+def handle_connect():
+    emit('connected', {'message': 'Connected to deception platform'})
+
+# ============ STARTUP ============
+
+def init_db():
+    with app.app_context():
+        db.create_all()
+        os.makedirs('data', exist_ok=True)
+        os.makedirs('logs', exist_ok=True)
+        print("[+] Database initialized")
+        print("[+] Honeytokens armed")
+        print("[+] Telemetry online")
+        print("[+] Containment ready")
+
+if __name__ == '__main__':
+    init_db()
+    print("\n" + "="*50)
+    print("  AUTONOMOUS DECEPTION INTELLIGENCE PLATFORM")
+    print("="*50)
+    print("  Dashboard: http://localhost:5000")
+    print("  API:       http://localhost:5000/api/")
+    print("="*50 + "\n")
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
