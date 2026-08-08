@@ -21,3 +21,10 @@ rad.json
 *.flf
 #Test results file
 TestResults.xml
+
+.env
+*.db
+venv/
+.venv/
+__pycache__/.env
+mirage.db
