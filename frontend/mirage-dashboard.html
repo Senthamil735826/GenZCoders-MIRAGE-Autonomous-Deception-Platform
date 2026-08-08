@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MIRAGE — Autonomous Deception Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0e13; --bg-elev:#10161d; --bg-elev-2:#161d26; --bg-elev-3:#1c2530;
+    --border:#232b35; --border-soft:#1a212a;
+    --text:#e8edf2; --text-dim:#8b96a3; --text-faint:#576070;
+    --cyan:#2dd4c4; --cyan-dim:#123a34; --cyan-text:#7fe8dc;
+    --amber:#f0a63a; --amber-dim:#3a2a10; --amber-text:#f5c07a;
+    --red:#ef5350; --red-dim:#3a1414; --red-text:#f59492;
+    --green:#34c77b; --green-dim:#123322; --green-text:#7fe0ac;
+    --purple:#8b7ff0; --purple-dim:#241f45; --purple-text:#b8b0f7;
+    --radius:10px; --mono:'IBM Plex Mono',monospace; --sans:'Inter',sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{background:var(--bg); color:var(--text); font-family:var(--sans); height:100%;}
+  body{overflow-x:hidden;}
+  ::selection{background:var(--cyan-dim); color:var(--cyan-text);}
+  button{font-family:inherit; cursor:pointer;}
+  input{font-family:inherit;}
+  a{color:inherit;}
+  :focus-visible{outline:2px solid var(--cyan); outline-offset:2px;}
+  .mono{font-family:var(--mono);}
+  .hidden{display:none !important;}
+
+  /* ---------- LOGIN ---------- */
+  #login-screen{min-height:100vh; display:grid; grid-template-columns:1.2fr 1fr;}
+  @media (max-width:860px){ #login-screen{grid-template-columns:1fr;} .login-visual{min-height:220px;} }
+
+  .login-visual{
+    position:relative; background:radial-gradient(circle at 30% 20%, #0e1620 0%, #080b0f 70%);
+    border-right:1px solid var(--border); overflow:hidden;
+    display:flex; flex-direction:column; justify-content:center; padding:3rem;
+  }
+  .signal-grid{position:absolute; inset:0; opacity:.35;
+    background-image:linear-gradient(var(--border-soft) 1px, transparent 1px), linear-gradient(90deg, var(--border-soft) 1px, transparent 1px);
+    background-size:36px 36px; mask-image:radial-gradient(circle at 30% 30%, black, transparent 75%);}
+  .pulse-dot{position:absolute; width:6px; height:6px; border-radius:50%; background:var(--cyan);}
+  @media (prefers-reduced-motion: no-preference){
+    .pulse-dot::after{content:''; position:absolute; inset:-6px; border-radius:50%; border:1px solid var(--cyan); animation:pulse 2.4s ease-out infinite;}
+    .pulse-dot.p2::after{animation-delay:.6s;} .pulse-dot.p3::after{animation-delay:1.2s;} .pulse-dot.p4::after{animation-delay:1.8s;}
+    @keyframes pulse{0%{transform:scale(1); opacity:.8;} 100%{transform:scale(6); opacity:0;}}
+  }
+  .wordmark{font-family:var(--mono); font-size:2.6rem; font-weight:600; letter-spacing:.02em; color:var(--text); position:relative; z-index:1;}
+  .wordmark span{color:var(--cyan);}
+  .tagline{position:relative; z-index:1; color:var(--text-dim); font-size:1rem; margin-top:.6rem; max-width:360px; line-height:1.6;}
+  .visual-stats{position:relative; z-index:1; display:flex; gap:2rem; margin-top:2.5rem;}
+  .visual-stats div p:first-child{font-family:var(--mono); font-size:1.5rem; color:var(--cyan-text);}
+  .visual-stats div p:last-child{font-size:.78rem; color:var(--text-faint); margin-top:2px; text-transform:uppercase; letter-spacing:.06em;}
+
+  .login-panel{display:flex; align-items:center; justify-content:center; padding:2rem;}
+  .login-card{width:100%; max-width:380px;}
+  .login-card h1{font-size:1.3rem; font-weight:600; margin-bottom:.3rem;}
+  .login-card .sub{color:var(--text-dim); font-size:.88rem; margin-bottom:1.6rem;}
+
+  .role-tabs{display:flex; background:var(--bg-elev); border:1px solid var(--border); border-radius:var(--radius); padding:3px; margin-bottom:1.4rem;}
+  .role-tab{flex:1; text-align:center; padding:.55rem; border:none; background:transparent; color:var(--text-dim); font-size:.85rem; font-weight:500; border-radius:7px; transition:background .15s, color .15s;}
+  .role-tab.active{background:var(--bg-elev-3); color:var(--cyan-text);}
+
+  .field{margin-bottom:1rem;}
+  .field label{display:block; font-size:.78rem; color:var(--text-dim); margin-bottom:.4rem;}
+  .field input{width:100%; background:var(--bg-elev); border:1px solid var(--border); border-radius:8px; padding:.7rem .8rem; color:var(--text); font-size:.9rem;}
+  .field input:focus{border-color:var(--cyan);}
+
+  .btn{border-radius:8px; padding:.75rem 1rem; font-size:.88rem; font-weight:600; border:1px solid transparent; width:100%; display:flex; align-items:center; justify-content:center; gap:.5rem;}
+  .btn-primary{background:var(--cyan); color:#04211d; margin-top:.4rem;}
+  .btn-primary:hover{background:#3fe4d2;}
+  .btn-google{background:var(--bg-elev); border-color:var(--border); color:var(--text); margin-top:.7rem;}
+  .btn-google:hover{border-color:var(--border-soft); background:var(--bg-elev-2);}
+  .divider{display:flex; align-items:center; gap:.7rem; margin:1.1rem 0; color:var(--text-faint); font-size:.75rem;}
+  .divider::before, .divider::after{content:''; flex:1; height:1px; background:var(--border);}
+  .login-note{font-size:.74rem; color:var(--text-faint); margin-top:1.2rem; line-height:1.6;}
+
+  /* ---------- DASHBOARD ---------- */
+  #dashboard{min-height:100vh;}
+  .topbar{display:flex; align-items:center; justify-content:space-between; padding:.9rem 1.5rem; border-bottom:1px solid var(--border); background:var(--bg-elev);}
+  .topbar-left{display:flex; align-items:center; gap:.9rem;}
+  .brand{font-family:var(--mono); font-weight:600; font-size:1.05rem;}
+  .brand span{color:var(--cyan);}
+  .threat-level{display:flex; align-items:center; gap:.4rem; font-size:.76rem; padding:.3rem .6rem; border-radius:20px; background:var(--amber-dim); color:var(--amber-text); border:1px solid #4a3616;}
+  .threat-level .dot{width:6px; height:6px; border-radius:50%; background:var(--amber);}
+  @media (prefers-reduced-motion: no-preference){ .threat-level .dot{animation:blink 1.6s ease-in-out infinite;} @keyframes blink{50%{opacity:.3;}} }
+  .topbar-right{display:flex; align-items:center; gap:1rem;}
+  .role-badge{font-size:.74rem; padding:.3rem .65rem; border-radius:20px; background:var(--bg-elev-3); color:var(--text-dim); border:1px solid var(--border);}
+  .clock{font-family:var(--mono); font-size:.8rem; color:var(--text-dim);}
+  .logout-btn{background:transparent; border:1px solid var(--border); color:var(--text-dim); font-size:.78rem; padding:.4rem .8rem; border-radius:7px;}
+  .logout-btn:hover{color:var(--text); border-color:var(--border-soft);}
+
+  .main{padding:1.5rem; max-width:1400px; margin:0 auto;}
+
+  .kpi-row{display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; margin-bottom:1.5rem;}
+  @media (max-width:760px){ .kpi-row{grid-template-columns:repeat(2,1fr);} }
+  .kpi-card{background:var(--bg-elev); border:1px solid var(--border); border-radius:var(--radius); padding:1rem 1.1rem;}
+  .kpi-card p.label{font-size:.74rem; color:var(--text-faint); text-transform:uppercase; letter-spacing:.05em;}
+  .kpi-card p.value{font-family:var(--mono); font-size:1.7rem; margin-top:.3rem; color:var(--text);}
+  .kpi-card p.value.cyan{color:var(--cyan-text);} .kpi-card p.value.green{color:var(--green-text);} .kpi-card p.value.amber{color:var(--amber-text);}
+
+  .panel{background:var(--bg-elev); border:1px solid var(--border); border-radius:var(--radius); padding:1.2rem;}
+  .panel-title{font-size:.86rem; font-weight:600; color:var(--text); margin-bottom:.9rem; display:flex; align-items:center; justify-content:space-between;}
+  .panel-title .sub{font-weight:400; color:var(--text-faint); font-size:.74rem;}
+
+  .grid-main{display:grid; grid-template-columns:1.6fr 1fr; gap:1rem; margin-bottom:1rem;}
+  @media (max-width:980px){ .grid-main{grid-template-columns:1fr;} }
+
+  .modules-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; margin-bottom:1rem;}
+  @media (max-width:980px){ .modules-grid{grid-template-columns:repeat(2,1fr);} }
+  @media (max-width:600px){ .modules-grid{grid-template-columns:1fr;} }
+
+  .module-card{background:var(--bg-elev); border:1px solid var(--border); border-radius:var(--radius); padding:1rem; display:flex; flex-direction:column; gap:.6rem;}
+  .module-head{display:flex; align-items:center; justify-content:space-between;}
+  .module-icon{width:34px; height:34px; border-radius:8px; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+  .module-name{font-size:.86rem; font-weight:600; margin-top:.5rem;}
+  .status-pill{font-size:.68rem; padding:.2rem .55rem; border-radius:20px; display:flex; align-items:center; gap:.35rem; font-weight:500;}
+  .status-pill .d{width:5px; height:5px; border-radius:50%;}
+  .status-active{background:var(--green-dim); color:var(--green-text);}
+  .status-active .d{background:var(--green);}
+  .status-idle{background:var(--bg-elev-3); color:var(--text-faint);}
+  .status-idle .d{background:var(--text-faint);}
+  .module-count{font-family:var(--mono); font-size:1.3rem;}
+  .module-meta{font-size:.72rem; color:var(--text-faint);}
+  .module-btn{margin-top:.3rem; background:var(--bg-elev-2); border:1px solid var(--border); color:var(--text); font-size:.76rem; padding:.5rem; border-radius:7px; text-align:center;}
+  .module-btn:hover{border-color:var(--cyan); color:var(--cyan-text);}
+  .module-btn:disabled{opacity:.4; cursor:not-allowed;}
+  .view-only-tag{font-size:.68rem; color:var(--text-faint); text-align:center; padding:.45rem;}
+
+  .feed-list{display:flex; flex-direction:column; gap:.55rem; max-height:340px; overflow-y:auto; padding-right:.3rem;}
+  .feed-item{display:flex; gap:.6rem; font-size:.78rem; padding:.5rem .6rem; border-radius:7px; background:var(--bg-elev-2); border-left:2px solid var(--border);}
+  .feed-item.sev-critical{border-left-color:var(--red);}
+  .feed-item.sev-warn{border-left-color:var(--amber);}
+  .feed-item.sev-info{border-left-color:var(--cyan);}
+  .feed-time{font-family:var(--mono); color:var(--text-faint); font-size:.7rem; white-space:nowrap; padding-top:1px;}
+  .feed-text{color:var(--text-dim); line-height:1.5;}
+  .feed-text b{color:var(--text); font-weight:500;}
+
+  .containment-list{display:flex; flex-direction:column; gap:.5rem; max-height:200px; overflow-y:auto;}
+  .containment-item{display:flex; align-items:center; gap:.6rem; font-size:.78rem; padding:.5rem .6rem; background:var(--green-dim); border-radius:7px; color:var(--green-text);}
+  .containment-item .tick{width:16px; height:16px; border-radius:50%; background:var(--green); color:#052e18; font-size:.65rem; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-weight:700;}
+  .containment-time{margin-left:auto; font-family:var(--mono); font-size:.68rem; color:var(--text-faint);}
+
+  .scroll::-webkit-scrollbar{width:6px;}
+  .scroll::-webkit-scrollbar-thumb{background:var(--border-soft); border-radius:3px;}
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN SCREEN ============ -->
+<div id="login-screen">
+  <div class="login-visual">
+    <div class="signal-grid"></div>
+    <div class="pulse-dot p1" style="top:22%; left:60%;"></div>
+    <div class="pulse-dot p2" style="top:55%; left:75%;"></div>
+    <div class="pulse-dot p3" style="top:68%; left:40%;"></div>
+    <div class="pulse-dot p4" style="top:35%; left:30%;"></div>
+    <div class="wordmark">MIRA<span>GE</span></div>
+    <p class="tagline">Autonomous deception platform. Honeytokens, canaries, and decoys that watch back — with containment that reacts before you do.</p>
+    <div class="visual-stats">
+      <div><p class="mono">9</p><p>Deception vectors</p></div>
+      <div><p class="mono">24/7</p><p>Live telemetry</p></div>
+      <div><p class="mono">&lt;2s</p><p>Auto-containment</p></div>
+    </div>
+  </div>
+
+  <div class="login-panel">
+    <div class="login-card">
+      <h1>Command center access</h1>
+      <p class="sub">Sign in to monitor or manage active deception campaigns.</p>
+
+      <div class="role-tabs">
+        <button class="role-tab active" id="tab-host" onclick="selectRole('host')">Host</button>
+        <button class="role-tab" id="tab-analyst" onclick="selectRole('analyst')">Analyst</button>
+      </div>
+
+      <form id="login-form" onsubmit="event.preventDefault(); enterDashboard();">
+        <div class="field">
+          <label for="login-user">Username</label>
+          <input id="login-user" type="text" placeholder="e.g. h.singh" autocomplete="username">
+        </div>
+        <div class="field">
+          <label for="login-pass">Password</label>
+          <input id="login-pass" type="password" placeholder="••••••••" autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primary">Enter command center</button>
+      </form>
+
+      <div class="divider">or</div>
+      <button class="btn btn-google" onclick="enterDashboard()">
+        <svg width="16" height="16" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.1 29.5 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.9 18.9 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.1 29.5 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.3 0 10.1-2 13.7-5.3l-6.3-5.3C29.4 35.2 26.8 36 24 36c-5.3 0-9.7-3.3-11.3-8l-6.6 5.1C9.6 39.6 16.3 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.2 5.7l6.3 5.3C39.9 37.3 44 31.6 44 24c0-1.3-.1-2.7-.4-3.5z"/></svg>
+        Continue with Google
+      </button>
+
+      <p class="login-note">Demo mode — credentials aren't verified. Role tab selects which view you land on. Swap the Google button for Google Identity Services + a real client ID when you wire up production auth.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DASHBOARD ============ -->
+<div id="dashboard" class="hidden">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="brand">MIRA<span>GE</span></div>
+      <div class="threat-level"><span class="dot"></span> Threat level: elevated</div>
+    </div>
+    <div class="topbar-right">
+      <span class="clock" id="clock">--:--:--</span>
+      <span class="role-badge" id="role-badge">Host</span>
+      <button class="logout-btn" onclick="logout()">Log out</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="kpi-row">
+      <div class="kpi-card"><p class="label">Active honeytokens</p><p class="value cyan" id="kpi-tokens">142</p></div>
+      <div class="kpi-card"><p class="label">Threats detected today</p><p class="value amber" id="kpi-threats">37</p></div>
+      <div class="kpi-card"><p class="label">Auto-contained</p><p class="value green" id="kpi-contained">31</p></div>
+      <div class="kpi-card"><p class="label">Avg. containment time</p><p class="value" id="kpi-time">1.8s</p></div>
+    </div>
+
+    <div class="grid-main">
+      <div class="panel">
+        <div class="panel-title">Threat severity <span class="sub">last 10 min · live</span></div>
+        <div style="position:relative; width:100%; height:220px;">
+          <canvas id="threatChart" role="img" aria-label="Live line chart of threat severity score over the last 10 minutes">Live threat severity feed.</canvas>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Automated containment <span class="sub">real-time</span></div>
+        <div class="containment-list scroll" id="containment-list"></div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:1rem;">
+      <div class="panel-title">Deception modules <span class="sub" id="modules-sub">host controls</span></div>
+      <div class="modules-grid" id="modules-grid"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Live telemetry feed <span class="sub">auto-refreshing</span></div>
+      <div class="feed-list scroll" id="feed-list"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+let currentRole = 'host';
+
+function selectRole(role){
+  currentRole = role;
+  document.getElementById('tab-host').classList.toggle('active', role==='host');
+  document.getElementById('tab-analyst').classList.toggle('active', role==='analyst');
+}
+
+function enterDashboard(){
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('dashboard').classList.remove('hidden');
+  document.getElementById('role-badge').textContent = currentRole === 'host' ? 'Host' : 'Analyst · view only';
+  document.getElementById('modules-sub').textContent = currentRole === 'host' ? 'host controls' : 'monitoring only';
+  renderModules();
+  startLiveFeed();
+}
+
+function logout(){
+  document.getElementById('dashboard').classList.add('hidden');
+  document.getElementById('login-screen').classList.remove('hidden');
+  document.getElementById('login-user').value = '';
+  document.getElementById('login-pass').value = '';
+}
+
+// clock
+function tickClock(){
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-GB');
+}
+setInterval(tickClock, 1000); tickClock();
+
+// ---- module definitions ----
+const modules = [
+  {id:'honeytoken', name:'Honeytoken generation', action:'Generate honeytoken', color:'cyan', icon:'target', count:142, status:'active'},
+  {id:'canary', name:'Canary deployment', action:'Deploy canary', color:'amber', icon:'flag', count:28, status:'active'},
+  {id:'credential', name:'Credential deception', action:'Plant fake credentials', color:'purple', icon:'key', count:63, status:'active'},
+  {id:'document', name:'Fake document creation', action:'Create decoy document', color:'green', icon:'doc', count:19, status:'idle'},
+  {id:'cloud', name:'Cloud deception', action:'Deploy cloud decoy', color:'cyan', icon:'cloud', count:8, status:'active'},
+  {id:'sourcecode', name:'Source-code deception', action:'Inject code trap', color:'red', icon:'code', count:11, status:'idle'},
+];
+
+const icons = {
+  target: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="0.6" fill="currentColor"/></svg>',
+  flag: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 21V4"/><path d="M5 4h13l-3 4 3 4H5"/></svg>',
+  key: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="15" r="4"/><path d="M11 12l8-8"/><path d="M16 5l3 3"/><path d="M13 8l2.5 2.5"/></svg>',
+  doc: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/><path d="M9 13h7M9 17h7"/></svg>',
+  cloud: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 18a4 4 0 0 1-.5-7.97A5.5 5.5 0 0 1 17 9.5 4 4 0 0 1 17 18H7z"/></svg>',
+  code: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 8l-4 4 4 4"/><path d="M15 8l4 4-4 4"/></svg>',
+};
+
+function renderModules(){
+  const grid = document.getElementById('modules-grid');
+  grid.innerHTML = modules.map(m => `
+    <div class="module-card" id="mod-${m.id}">
+      <div class="module-head">
+        <div class="module-icon" style="background:var(--${m.color}-dim); color:var(--${m.color}-text);">${icons[m.icon]}</div>
+        <span class="status-pill ${m.status==='active'?'status-active':'status-idle'}" id="status-${m.id}"><span class="d"></span>${m.status==='active'?'Active':'Idle'}</span>
+      </div>
+      <div class="module-name">${m.name}</div>
+      <div class="module-count" id="count-${m.id}">${m.count}</div>
+      <div class="module-meta">deployed</div>
+      ${currentRole==='host'
+        ? `<button class="module-btn" onclick="triggerModule('${m.id}')">${m.action}</button>`
+        : `<div class="view-only-tag">View only</div>`}
+    </div>
+  `).join('');
+}
+
+function triggerModule(id){
+  const m = modules.find(x => x.id === id);
+  m.count += 1;
+  m.status = 'active';
+  document.getElementById(`count-${id}`).textContent = m.count;
+  const pill = document.getElementById(`status-${id}`);
+  pill.className = 'status-pill status-active';
+  pill.innerHTML = '<span class="d"></span>Active';
+  pushFeedItem(`<b>${m.name}</b> triggered manually — new decoy deployed`, 'info');
+}
+
+// ---- threat chart ----
+const chartData = Array.from({length:20}, () => Math.floor(Math.random()*30)+15);
+const chartLabels = Array.from({length:20}, (_,i) => `${20-i}m`);
+const ctx = document.getElementById('threatChart');
+const threatChart = new Chart(ctx, {
+  type:'line',
+  data:{ labels: chartLabels, datasets:[{ data: chartData, borderColor:'#2dd4c4', backgroundColor:'rgba(45,212,196,0.08)', fill:true, tension:.35, pointRadius:0, borderWidth:2 }]},
+  options:{ responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{display:false} },
+    scales:{
+      x:{ ticks:{ color:'#576070', font:{size:10} }, grid:{ display:false } },
+      y:{ ticks:{ color:'#576070', font:{size:10} }, grid:{ color:'#1a212a' }, min:0, max:100 }
+    }
+  }
+});
+
+function pushChartPoint(){
+  const last = chartData[chartData.length-1];
+  let next = last + (Math.random()*20-10);
+  next = Math.max(5, Math.min(95, Math.round(next)));
+  chartData.push(next); chartData.shift();
+  threatChart.data.datasets[0].data = chartData;
+  threatChart.update('none');
+}
+
+// ---- telemetry feed ----
+const feedTemplates = [
+  {text:'Honeytoken <b>HT-3391</b> accessed from unrecognised host', sev:'critical'},
+  {text:'Canary <b>CN-002</b> triggered — possible lateral movement', sev:'critical'},
+  {text:'Credential decoy used in failed login attempt', sev:'warn'},
+  {text:'Decoy document <b>finance_Q3_report.xlsx</b> opened', sev:'warn'},
+  {text:'Cloud bucket <b>decoy-storage-07</b> listed by unfamiliar IAM role', sev:'warn'},
+  {text:'Source trap <b>getAdminToken()</b> invoked in staging repo', sev:'critical'},
+  {text:'New honeytoken beacon registered', sev:'info'},
+  {text:'Telemetry sync completed — 0 anomalies', sev:'info'},
+  {text:'Canary heartbeat received from edge node 4', sev:'info'},
+];
+
+const containmentTemplates = [
+  'Auto-blocked source IP',
+  'Isolated workstation from network',
+  'Revoked session token',
+  'Quarantined outbound transfer',
+  'Disabled compromised IAM role',
+  'Rotated exposed credential',
+];
+
+function nowTime(){ return new Date().toLocaleTimeString('en-GB'); }
+
+function pushFeedItem(text, sev){
+  const list = document.getElementById('feed-list');
+  const el = document.createElement('div');
+  el.className = `feed-item sev-${sev}`;
+  el.innerHTML = `<span class="feed-time">${nowTime()}</span><span class="feed-text">${text}</span>`;
+  list.prepend(el);
+  while (list.children.length > 30) list.removeChild(list.lastChild);
+}
+
+function pushContainmentItem(){
+  const list = document.getElementById('containment-list');
+  const action = containmentTemplates[Math.floor(Math.random()*containmentTemplates.length)];
+  const el = document.createElement('div');
+  el.className = 'containment-item';
+  el.innerHTML = `<span class="tick">✓</span><span>${action}</span><span class="containment-time">${nowTime()}</span>`;
+  list.prepend(el);
+  while (list.children.length > 12) list.removeChild(list.lastChild);
+  const kc = document.getElementById('kpi-contained');
+  kc.textContent = parseInt(kc.textContent) + 1;
+}
+
+let feedInterval, chartInterval;
+function startLiveFeed(){
+  clearInterval(feedInterval); clearInterval(chartInterval);
+  document.getElementById('feed-list').innerHTML = '';
+  document.getElementById('containment-list').innerHTML = '';
+  for (let i=0;i<5;i++){
+    const t = feedTemplates[Math.floor(Math.random()*feedTemplates.length)];
+    pushFeedItem(t.text, t.sev);
+  }
+  pushContainmentItem(); pushContainmentItem();
+
+  feedInterval = setInterval(() => {
+    const t = feedTemplates[Math.floor(Math.random()*feedTemplates.length)];
+    pushFeedItem(t.text, t.sev);
+    if (t.sev !== 'info'){
+      const kt = document.getElementById('kpi-threats');
+      kt.textContent = parseInt(kt.textContent) + 1;
+      if (Math.random() > 0.35) setTimeout(pushContainmentItem, 900 + Math.random()*1200);
+    }
+    if (Math.random() > 0.6){
+      const kk = document.getElementById('kpi-tokens');
+      kk.textContent = parseInt(kk.textContent) + (Math.random() > 0.5 ? 1 : 0);
+    }
+  }, 3200);
+
+  chartInterval = setInterval(pushChartPoint, 2200);
+}
+</script>
+</body>
+</html>
